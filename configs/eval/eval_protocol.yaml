@@ -1,0 +1,21 @@
+# Evaluation protocol
+num_episodes: 1000
+seeds: [42, 123, 456, 789, 1024]    # 5 seeds per condition
+max_months: 60
+
+metrics:
+  - total_interest_paid
+  - months_to_payoff
+  - average_utilization
+  - credit_health_score
+
+confidence_level: 0.95               # For CI computation
+
+# Scenario distribution for evaluation
+scenario_sampler:
+  num_cards_range: [1, 5]
+  apr_range: [0.12, 0.29]
+  balance_range: [500, 15000]
+  income_range: [3000, 8000]
+
+output_dir: "results/"
