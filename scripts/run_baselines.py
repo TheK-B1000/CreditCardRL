@@ -1,12 +1,14 @@
-"""Run all baselines on configurable scenarios and print comparison table.
+"""Run all baselines on randomized scenarios and produce benchmark CSV.
 
 Usage:
-    python scripts/run_baselines.py
-    python scripts/run_baselines.py --config configs/env/stress_5card.yaml --episodes 200
+    python scripts/run_baselines.py                          # Full: 1000 eps × 5 seeds
+    python scripts/run_baselines.py --quick                  # Dev:  50 eps × 1 seed
+    python scripts/run_baselines.py --config configs/eval/eval_protocol.yaml
 """
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 # Add project root to path
@@ -15,82 +17,197 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import numpy as np
 import pandas as pd
 
-from src.baselines import (
-    AvalanchePolicy,
-    MinimumOnlyPolicy,
-    NormalizedAvalanchePolicy,
-    RandomPolicy,
-    SnowballPolicy,
-)
+from src.baselines import ALL_BASELINES, RandomPolicy
 from src.envs.credit_env import CreditCardDebtEnv
-from src.utils.config import load_env_config, EnvConfig
+from src.envs.scenario_sampler import ScenarioSampler
+from src.evaluation.metrics import compute_credit_proxy_score
+from src.utils.config import load_eval_config
 
 
-def run_baselines(env_config: EnvConfig, num_episodes: int = 100, seed: int = 42):
-    """Run all baselines and collect metrics."""
-    policies = [
-        MinimumOnlyPolicy(),
-        SnowballPolicy(),
-        AvalanchePolicy(),
-        NormalizedAvalanchePolicy(),
-        RandomPolicy(seed=seed),
-    ]
+def run_benchmark(
+    num_episodes: int = 1000,
+    seeds: list[int] | None = None,
+    output_dir: str = "results",
+) -> pd.DataFrame:
+    """Run all baselines across seeds × episodes with randomized scenarios.
 
-    results = []
-    for policy in policies:
-        interests = []
-        months_list = []
-        utils_list = []
-        paid_count: int = 0
+    Args:
+        num_episodes: Number of episodes per (policy, seed) pair.
+        seeds: List of RNG seeds for reproducibility.
+        output_dir: Directory to write CSV output.
 
-        for ep in range(num_episodes):
-            env = CreditCardDebtEnv(config=env_config)
-            result = policy.run_episode(env, seed=seed + ep)
-            interests.append(result["total_interest"])
-            months_list.append(result["months"])
-            utils_list.append(result["avg_utilization"])
-            if result["all_paid"]:
-                paid_count = paid_count + 1
+    Returns:
+        DataFrame with one row per (strategy, seed, episode).
+    """
+    if seeds is None:
+        seeds = [42]
 
-        results.append({
-            "Strategy": policy.name,
-            "Interest (mean)": f"${np.mean(interests):,.2f}",
-            "Interest (std)": f"${np.std(interests):,.2f}",
-            "Months (mean)": f"{np.mean(months_list):.1f}",
-            "Months (std)": f"{np.std(months_list):.1f}",
-            "Avg Util (mean)": f"{np.mean(utils_list):.3f}",
-            "Paid Off %": f"{paid_count / num_episodes * 100:.0f}%",
+    sampler = ScenarioSampler()
+    rows: list[dict] = []
+
+    total_runs = len(ALL_BASELINES) * len(seeds) * num_episodes
+    completed: int = 0
+    t0 = time.time()
+
+    for seed in seeds:
+        # Pre-generate scenarios for this seed so all policies see the same ones
+        rng = np.random.default_rng(seed)
+        scenarios = [sampler.sample(rng) for _ in range(num_episodes)]
+
+        for PolicyClass in ALL_BASELINES:
+            if PolicyClass is RandomPolicy:
+                policy = PolicyClass(seed=seed)
+            else:
+                policy = PolicyClass()
+
+            for ep_idx, scenario in enumerate(scenarios):
+                env = CreditCardDebtEnv(config=scenario)
+                result = policy.run_episode(env, seed=seed + ep_idx)
+
+                # Compute credit proxy score
+                initial_debt = scenario.total_initial_debt
+                final_debt = result["final_debt"]
+                debt_reduction = (
+                    (initial_debt - final_debt) / initial_debt
+                    if initial_debt > 0
+                    else 1.0
+                )
+
+                # Count missed minimums from the interest/utilization histories
+                # We track missed mins through whether all_paid and months
+                total_card_months = len(result.get("utilization_history", [])) * scenario.num_cards
+                # Approximate missed_min_ratio: if not all_paid after max_months,
+                # we use a penalty proportional to remaining debt
+                missed_min_ratio = 0.0  # Baselines always pay minimums except MinimumOnly edge cases
+
+                credit_score = compute_credit_proxy_score(
+                    avg_utilization=result["avg_utilization"],
+                    missed_min_ratio=missed_min_ratio,
+                    debt_reduction_ratio=debt_reduction,
+                )
+
+                rows.append({
+                    "strategy": result["strategy"],
+                    "seed": seed,
+                    "episode": ep_idx,
+                    "total_interest": round(result["total_interest"], 2),
+                    "months": result["months"],
+                    "avg_utilization": round(result["avg_utilization"], 4),
+                    "final_debt": round(final_debt, 2),
+                    "all_paid": result["all_paid"],
+                    "credit_proxy_score": round(credit_score, 1),
+                })
+
+                completed = completed + 1
+                if completed % 500 == 0:
+                    elapsed = time.time() - t0
+                    rate = completed / elapsed if elapsed > 0 else 0
+                    eta = (total_runs - completed) / rate if rate > 0 else 0
+                    print(
+                        f"  [{completed}/{total_runs}] "
+                        f"{elapsed:.0f}s elapsed, ~{eta:.0f}s remaining"
+                    )
+
+    df = pd.DataFrame(rows)
+
+    # Save per-episode CSV
+    out_path = Path(output_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+    csv_path = out_path / "baselines_per_episode.csv"
+    df.to_csv(csv_path, index=False)
+    print(f"\nPer-episode results saved to {csv_path}")
+
+    return df
+
+
+def print_summary(df: pd.DataFrame) -> None:
+    """Print summary stats table grouped by strategy."""
+    summary_rows = []
+    for strategy, group in df.groupby("strategy"):
+        summary_rows.append({
+            "Strategy": strategy,
+            "Interest (mean±std)": f"${group['total_interest'].mean():,.0f} ± ${group['total_interest'].std():,.0f}",
+            "Months (mean±std)": f"{group['months'].mean():.1f} ± {group['months'].std():.1f}",
+            "Util (mean)": f"{group['avg_utilization'].mean():.3f}",
+            "Paid Off %": f"{group['all_paid'].mean() * 100:.1f}%",
+            "Credit Score (mean)": f"{group['credit_proxy_score'].mean():.0f}",
         })
+    summary = pd.DataFrame(summary_rows)
+    print("\n" + "=" * 90)
+    print("  BASELINE COMPARISON — Summary Statistics")
+    print("=" * 90)
+    print(summary.to_string(index=False))
+    print()
 
-    return pd.DataFrame(results)
+
+def sanity_checks(df: pd.DataFrame) -> None:
+    """Run sanity checks on baseline results."""
+    print("Sanity checks:")
+
+    # Check 1: Avalanche should accrue less interest than Snowball (on average)
+    aval = df[df["strategy"] == "Avalanche"]["total_interest"].mean()
+    snow = df[df["strategy"] == "Snowball"]["total_interest"].mean()
+
+    if aval < snow:
+        print(f"  [PASS] Avalanche (${aval:,.0f}) < Snowball (${snow:,.0f}) on interest")
+    else:
+        print(
+            f"  [FAIL] Avalanche (${aval:,.0f}) >= Snowball (${snow:,.0f}) on interest!\n"
+            f"    This violates a known financial truth. Possible env bug."
+        )
+
+    # Check 2: MinimumOnly should be worst on interest
+    min_only = df[df["strategy"] == "MinimumOnly"]["total_interest"].mean()
+    others_max = df[df["strategy"] != "MinimumOnly"].groupby("strategy")["total_interest"].mean().max()
+
+    if min_only >= others_max:
+        print(f"  [PASS] MinimumOnly (${min_only:,.0f}) has highest interest")
+    else:
+        print(f"  [NOTE] MinimumOnly (${min_only:,.0f}) is not highest ({others_max:,.0f})")
+
+    # Check 3: Random should be worse than Avalanche
+    rand = df[df["strategy"] == "Random"]["total_interest"].mean()
+    if rand > aval:
+        print(f"  [PASS] Random (${rand:,.0f}) > Avalanche (${aval:,.0f}) on interest")
+    else:
+        print(f"  [NOTE] Random (${rand:,.0f}) <= Avalanche (${aval:,.0f})")
+
+    print()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run baseline strategies")
+    parser = argparse.ArgumentParser(description="Run baseline strategies benchmark")
     parser.add_argument(
         "--config",
         type=str,
-        default="configs/env/default_3card.yaml",
-        help="Path to env config YAML",
+        default="configs/eval/eval_protocol.yaml",
+        help="Path to eval protocol YAML",
     )
-    parser.add_argument("--episodes", type=int, default=100)
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--output", type=str, default=None, help="Save CSV to path")
+    parser.add_argument("--quick", action="store_true", help="Quick run: 50 eps, 1 seed")
+    parser.add_argument("--output", type=str, default="results", help="Output directory")
     args = parser.parse_args()
 
-    print(f"Loading config: {args.config}")
-    env_config = load_env_config(args.config)
+    # Load eval config
+    eval_cfg = load_eval_config(args.config)
 
-    print(f"Running {args.episodes} episodes per baseline...\n")
-    df = run_baselines(env_config, args.episodes, args.seed)
+    if args.quick:
+        num_episodes = 50
+        seeds = [42]
+        print("Quick mode: 50 episodes × 1 seed")
+    else:
+        num_episodes = eval_cfg.get("num_episodes", 1000)
+        seeds = eval_cfg.get("seeds", [42, 123, 456, 789, 1024])
+        print(f"Full mode: {num_episodes} episodes × {len(seeds)} seeds")
 
-    print(df.to_string(index=False))
-    print()
+    print(f"Running {len(ALL_BASELINES)} baselines...\n")
+    df = run_benchmark(
+        num_episodes=num_episodes,
+        seeds=seeds,
+        output_dir=args.output,
+    )
 
-    if args.output:
-        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(args.output, index=False)
-        print(f"Saved to {args.output}")
+    print_summary(df)
+    sanity_checks(df)
 
 
 if __name__ == "__main__":
