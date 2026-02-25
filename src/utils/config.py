@@ -61,7 +61,16 @@ def load_env_config(path: str | Path) -> EnvConfig:
 
     # Build card configs
     card_dicts = raw.get("cards", [])
-    cards = [CardConfig(**cd) for cd in card_dicts]
+    cards = [
+        CardConfig(
+            name=str(cd.get("name", "Card")),
+            apr=float(cd.get("apr", 0.199)),
+            balance=float(cd.get("balance", 5000.0)),
+            credit_limit=float(cd.get("credit_limit", 10000.0)),
+            min_payment_floor=float(cd.get("min_payment_floor", 25.0)),
+        )
+        for cd in card_dicts
+    ]
 
     # Build reward config
     reward_dict = raw.get("reward", {})

@@ -1,0 +1,11 @@
+{
+  "source_directories": [
+    {
+      "root": "."
+    }
+  ],
+  "search_path": ["."],
+  "python_version": "3.12",
+  "site_package_search_strategy": "all",
+  "python_interpreter_path": "C:/Users/K-B/AppData/Local/Programs/Python/Python312/python.exe"
+}

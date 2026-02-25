@@ -41,7 +41,7 @@ def run_baselines(env_config: EnvConfig, num_episodes: int = 100, seed: int = 42
         interests = []
         months_list = []
         utils_list = []
-        paid_count = 0
+        paid_count: int = 0
 
         for ep in range(num_episodes):
             env = CreditCardDebtEnv(config=env_config)
@@ -50,7 +50,7 @@ def run_baselines(env_config: EnvConfig, num_episodes: int = 100, seed: int = 42
             months_list.append(result["months"])
             utils_list.append(result["avg_utilization"])
             if result["all_paid"]:
-                paid_count += 1
+                paid_count = paid_count + 1
 
         results.append({
             "Strategy": policy.name,
@@ -59,7 +59,7 @@ def run_baselines(env_config: EnvConfig, num_episodes: int = 100, seed: int = 42
             "Months (mean)": f"{np.mean(months_list):.1f}",
             "Months (std)": f"{np.std(months_list):.1f}",
             "Avg Util (mean)": f"{np.mean(utils_list):.3f}",
-            "Paid Off %": f"{100 * paid_count / num_episodes:.0f}%",
+            "Paid Off %": f"{paid_count / num_episodes * 100:.0f}%",
         })
 
     return pd.DataFrame(results)
