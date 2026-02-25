@@ -10,6 +10,31 @@ from typing import Any
 from src.envs.reward import RewardConfig
 
 
+def _resolve_config_path(path: str | Path) -> Path:
+    """Resolve a config path, anchoring relative paths to the project root.
+
+    The project root is identified as the nearest ancestor directory that
+    contains ``pyproject.toml``.  If the file exists as-is (e.g. an absolute
+    path or the CWD happens to be the project root already), it is returned
+    unchanged.
+    """
+    p = Path(path)
+    if p.is_absolute() or p.exists():
+        return p
+
+    # Walk up from this file's location to find the project root
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").exists():
+            candidate = parent / p
+            if candidate.exists():
+                return candidate
+            # Return it anyway — open() will give the descriptive FileNotFoundError
+            return candidate
+
+    return p  # Fallback: return as-is
+
+
 @dataclass
 class CardConfig:
     """Configuration for a single credit card."""
@@ -55,7 +80,7 @@ def load_env_config(path: str | Path) -> EnvConfig:
     Returns:
         Populated EnvConfig instance.
     """
-    path = Path(path)
+    path = _resolve_config_path(path)
     with open(path, "r") as f:
         raw: dict[str, Any] = yaml.safe_load(f)
 
@@ -95,13 +120,13 @@ def load_train_config(path: str | Path) -> dict[str, Any]:
 
     Returns a plain dict since training configs vary by algorithm.
     """
-    path = Path(path)
+    path = _resolve_config_path(path)
     with open(path, "r") as f:
         return yaml.safe_load(f)
 
 
 def load_eval_config(path: str | Path) -> dict[str, Any]:
     """Load evaluation protocol from a YAML file."""
-    path = Path(path)
+    path = _resolve_config_path(path)
     with open(path, "r") as f:
         return yaml.safe_load(f)

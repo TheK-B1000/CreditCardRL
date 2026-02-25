@@ -235,6 +235,7 @@ class CreditCardDebtEnv(gym.Env):
             fees=fees,
             missed_count=missed_count,
             newly_paid_off=newly_paid_off,
+            all_paid=all_paid,
         )
         self._last_step_info = info
 

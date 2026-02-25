@@ -3,7 +3,8 @@
     "pythonPlatform": "Windows",
     "pythonPath": "C:\\Users\\K-B\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
     "extraPaths": [
-        "."
+        ".",
+        "C:\\Users\\K-B\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\site-packages"
     ],
     "include": [
         "src",

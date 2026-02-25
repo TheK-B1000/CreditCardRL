@@ -23,7 +23,7 @@ from stable_baselines3.common.callbacks import EvalCallback, CallbackList
 
 from src.envs.credit_env import CreditCardDebtEnv
 from src.utils.config import load_env_config
-from src.agents.callbacks import CreditMetricsCallback
+from src.agents.callbacks import CreditMetricsCallback, EpisodeLoggerCallback
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
@@ -39,9 +39,21 @@ def make_env(env_config_path: str, seed: int = 0):
     return _init
 
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def resolve_project_path(path: str) -> Path:
+    """Resolve a path relative to the project root if not absolute."""
+    p = Path(path)
+    if p.is_absolute():
+        return p
+    return PROJECT_ROOT / p
+
+
 def load_train_config(path: str) -> dict:
     """Load training hyperparameters from YAML."""
-    with open(path, "r") as f:
+    resolved = resolve_project_path(path)
+    with open(resolved, "r") as f:
         return yaml.safe_load(f)
 
 
@@ -127,6 +139,15 @@ def main():
     # ── Callbacks ────────────────────────────────────────────────────
     credit_cb = CreditMetricsCallback(verbose=0)
 
+    # Derive scenario tag from env config filename (e.g. "default_3card")
+    scenario_tag = Path(env_config_path).stem  # e.g. "default_3card"
+    episode_logger_cb = EpisodeLoggerCallback(
+        scenario_tag=scenario_tag,
+        algo_tag="PPO",
+        log_freq=1,   # print every episode; increase to reduce noise
+        verbose=0,
+    )
+
     eval_cb = EvalCallback(
         eval_env,
         best_model_save_path=str(Path("models") / "best"),
@@ -137,7 +158,7 @@ def main():
         verbose=1,
     )
 
-    callbacks = CallbackList([credit_cb, eval_cb])
+    callbacks = CallbackList([credit_cb, episode_logger_cb, eval_cb])
 
     # ── Train ────────────────────────────────────────────────────────
     print("Starting training...")

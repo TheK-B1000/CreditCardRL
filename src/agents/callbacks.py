@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
 
@@ -82,5 +83,138 @@ class CreditMetricsCallback(BaseCallback):
                 self._ep_interest[i] = []
                 self._ep_utilization[i] = []
                 self._ep_months[i] = 0
+
+        return True
+
+
+class EpisodeLoggerCallback(BaseCallback):
+    """Print a one-line summary to stdout after every completed episode.
+
+    Output format (one line per episode):
+        [PPO|3card] ep=142 result=PAID_OFF months=23/60 interest=$1,247.33
+            cards=3/3 util=34.2% score=681 reward=12.45 | PAID=89 TIMEOUT=53
+
+    Args:
+        scenario_tag: Short label for the env scenario (e.g. "3card", "stress5").
+        algo_tag:     Short label for the algorithm (default "PPO").
+        log_freq:     Print every N episodes (1 = every episode).
+        flush:        Flush stdout after each print (useful for piped output).
+        verbose:      SB3 verbose level.
+    """
+
+    def __init__(
+        self,
+        scenario_tag: str = "CreditCard",
+        algo_tag: str = "PPO",
+        log_freq: int = 1,
+        flush: bool = True,
+        verbose: int = 0,
+    ):
+        super().__init__(verbose)
+        self.scenario_tag = scenario_tag
+        self.algo_tag = algo_tag
+        self.log_freq = max(1, log_freq)
+        self.flush = flush
+
+        # Running counters
+        self._ep_count: int = 0
+        self._paid_off_count: int = 0
+        self._timeout_count: int = 0
+
+        # Per-env accumulators
+        self._ep_interest: list[list[float]] = []
+        self._ep_utilization: list[list[float]] = []
+        self._ep_months: list[int] = []
+        self._ep_reward: list[float] = []
+
+    def _on_training_start(self) -> None:
+        n_envs = self.training_env.num_envs  # type: ignore[union-attr]
+        self._ep_interest = [[] for _ in range(n_envs)]
+        self._ep_utilization = [[] for _ in range(n_envs)]
+        self._ep_months = [0] * n_envs
+        self._ep_reward = [0.0] * n_envs
+
+    def _on_step(self) -> bool:
+        infos = self.locals.get("infos", [])
+        rewards = self.locals.get("rewards", [])
+
+        for i, info in enumerate(infos):
+            # Accumulate step-level data
+            interests = info.get("interests", [])
+            step_interest = sum(interests) if interests else 0.0
+            self._ep_interest[i].append(step_interest)
+
+            overall_util = info.get("overall_utilization", 0.0)
+            self._ep_utilization[i].append(overall_util)
+
+            self._ep_months[i] = info.get("month", self._ep_months[i])
+
+            if i < len(rewards):
+                self._ep_reward[i] += float(rewards[i])
+
+            # Check for episode end (SB3 Monitor wrapper adds "episode" key)
+            episode_info = info.get("episode")
+            if episode_info is not None:
+                self._ep_count += 1
+
+                # Determine outcome
+                terminal_info = info.get("terminal_info", info)
+                all_paid = terminal_info.get("all_paid", info.get("all_paid", False))
+
+                if all_paid:
+                    result = "PAID_OFF"
+                    self._paid_off_count += 1
+                else:
+                    result = "TIMEOUT"
+                    self._timeout_count += 1
+
+                # Gather metrics
+                months = self._ep_months[i]
+                total_interest = sum(self._ep_interest[i])
+                utils = self._ep_utilization[i]
+                avg_util = float(np.mean(utils)) if utils else 0.0
+                cards_paid = info.get("cards_paid_off", 0)
+                total_cards = len(info.get("balances", []))
+
+                # Credit proxy score
+                debt_reduction = 1.0 if all_paid else 0.5
+                credit_score = compute_credit_proxy_score(
+                    avg_utilization=avg_util,
+                    missed_min_ratio=0.0,
+                    debt_reduction_ratio=debt_reduction,
+                )
+
+                ep_reward = self._ep_reward[i]
+
+                # Max months from env (via info or training_env)
+                max_months = 60  # fallback
+                try:
+                    env = self.training_env.envs[i]  # type: ignore
+                    max_months = getattr(env, "max_months", 60)
+                except Exception:
+                    pass
+
+                # Print log line
+                if self._ep_count % self.log_freq == 0:
+                    line = (
+                        f"[{self.algo_tag}|{self.scenario_tag}] "
+                        f"ep={self._ep_count} "
+                        f"result={result} "
+                        f"months={months}/{max_months} "
+                        f"interest=${total_interest:,.2f} "
+                        f"cards={cards_paid}/{total_cards} "
+                        f"util={avg_util:.1%} "
+                        f"score={credit_score:.0f} "
+                        f"reward={ep_reward:.2f} "
+                        f"| PAID={self._paid_off_count} "
+                        f"TIMEOUT={self._timeout_count}"
+                    )
+                    print(line, flush=self.flush)
+
+                # Reset per-env accumulators
+                self._ep_interest[i] = []
+                self._ep_utilization[i] = []
+                self._ep_months[i] = 0
+                self._ep_reward[i] = 0.0
 
         return True
