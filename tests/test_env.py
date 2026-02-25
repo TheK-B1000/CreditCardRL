@@ -216,3 +216,10 @@ class TestGymnasiumCompliance:
         env = CreditCardDebtEnv(config=default_config)
         # check_env will raise if there are issues
         check_env(env, skip_render_check=True)
+
+    def test_sb3_check_env(self, default_config):
+        """Run Stable-Baselines3's stricter env checker."""
+        from stable_baselines3.common.env_checker import check_env as sb3_check_env
+        env = CreditCardDebtEnv(config=default_config)
+        # SB3's checker validates dtypes, space containment, deterministic reset
+        sb3_check_env(env)

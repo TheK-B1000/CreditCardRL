@@ -1,1 +1,4 @@
-# Agents package (training scripts — Phase 1)
+# Agents package — RL training infrastructure
+from src.agents.callbacks import CreditMetricsCallback
+
+__all__ = ["CreditMetricsCallback"]

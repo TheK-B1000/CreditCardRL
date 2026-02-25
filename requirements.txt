@@ -6,6 +6,7 @@ pyyaml>=6.0
 matplotlib>=3.7
 pandas>=2.0
 scipy>=1.11
+tensorboard>=2.14
 pytest>=7.4
 pytest-cov>=4.1
 ruff>=0.1
