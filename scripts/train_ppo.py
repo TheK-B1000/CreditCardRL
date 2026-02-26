@@ -15,6 +15,7 @@ from pathlib import Path
 # Ensure project root is on path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import yaml
 import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecMonitor
@@ -160,12 +161,21 @@ def main():
         progress_bar=True,
     )
 
-    # ── Save final model ─────────────────────────────────────────────
+    # ── Save final model + config (P2.6) ─────────────────────────────
     model_dir = Path("models")
     model_dir.mkdir(parents=True, exist_ok=True)
     model_path = model_dir / "ppo_latest"
     model.save(str(model_path))
+    # Save training config alongside checkpoint for reproducibility
+    config_save_path = model_dir / "ppo_config.yaml"
+    with open(config_save_path, "w") as f:
+        yaml.safe_dump(cfg, f, default_flow_style=False, sort_keys=False)
+    best_dir = model_dir / "best"
+    best_dir.mkdir(parents=True, exist_ok=True)
+    with open(best_dir / "ppo_config.yaml", "w") as f:
+        yaml.safe_dump(cfg, f, default_flow_style=False, sort_keys=False)
     print(f"\nModel saved to {model_path}.zip")
+    print(f"Config saved to {config_save_path} and {best_dir / 'ppo_config.yaml'}")
     print(f"TensorBoard logs in {log_dir}")
     print(f"  View with: tensorboard --logdir {log_dir}")
 

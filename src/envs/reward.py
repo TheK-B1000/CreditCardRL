@@ -14,8 +14,10 @@ from src.envs.financial_model import CardState, compute_overall_utilization
 class RewardConfig:
     """Reward shaping coefficients. Defaults from the project brief."""
 
-    alpha: float = 1.0      # Interest penalty weight
-    beta: float = 0.3       # Utilization penalty weight
+    alpha: float = 1.0      # Interest penalty weight (normalized by initial debt)
+    eta: float = 2.0        # Dense interest penalty: -eta * (interest_dollars / 500)
+    beta: float = 0.3       # Utilization penalty weight (when above target)
+    beta_below: float = 0.5  # Utilization bonus when below target
     gamma_: float = 5.0     # Missed minimum penalty (per card)
     delta: float = 0.5      # Per-card payoff bonus
     epsilon: float = 10.0   # All-debt-cleared terminal bonus
@@ -52,15 +54,19 @@ def compute_step_reward(
     Returns:
         Scalar reward for this time step.
     """
-    # Normalize interest penalty by initial debt to keep reward scale consistent
+    # Interest penalty: normalized (scale-invariant) + dense dollar-based (stronger gradient)
     if initial_total_debt > 0:
         interest_penalty = cfg.alpha * (interest_accrued / initial_total_debt)
     else:
         interest_penalty = 0.0
+    interest_penalty += cfg.eta * (interest_accrued / 500.0)  # ~$500 interest ≈ -eta per step
 
-    # Utilization penalty (only kicks in above target)
+    # Utilization: penalty above target, bonus below target (encourage low util)
     avg_util = compute_overall_utilization(cards)
-    util_penalty = cfg.beta * max(0.0, avg_util - cfg.utilization_target)
+    if avg_util > cfg.utilization_target:
+        util_term = -cfg.beta * (avg_util - cfg.utilization_target)
+    else:
+        util_term = cfg.beta_below * (cfg.utilization_target - avg_util)
 
     # Missed minimum hard penalty
     missed_penalty = cfg.gamma_ * missed_minimum_count
@@ -68,7 +74,7 @@ def compute_step_reward(
     # Payoff bonus
     payoff_bonus = cfg.delta * cards_paid_off_this_step
 
-    return -interest_penalty - util_penalty - missed_penalty + payoff_bonus
+    return -interest_penalty + util_term - missed_penalty + payoff_bonus
 
 
 def compute_terminal_reward(
