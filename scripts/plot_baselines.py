@@ -18,15 +18,14 @@ import pandas as pd
 
 
 # Strategy display order (worst → best expected)
-STRATEGY_ORDER = ["MinimumOnly", "Random", "Snowball", "NormalizedAvalanche", "Avalanche"]
+STRATEGY_ORDER = ["MinimumOnly", "Snowball", "Avalanche", "NormalizedAvalanche"]
 
 # Color palette — muted, professional
 COLORS = {
     "MinimumOnly": "#e74c3c",
-    "Random": "#95a5a6",
     "Snowball": "#3498db",
-    "NormalizedAvalanche": "#2ecc71",
     "Avalanche": "#9b59b6",
+    "NormalizedAvalanche": "#2ecc71",
 }
 
 

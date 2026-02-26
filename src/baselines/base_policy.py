@@ -3,10 +3,24 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import TypedDict
 
 import numpy as np
 
 from src.envs.credit_env import CreditCardDebtEnv
+
+
+class EpisodeResult(TypedDict):
+    """Return type of BaselinePolicy.run_episode()."""
+
+    strategy: str
+    total_interest: float
+    months: int
+    avg_utilization: float
+    final_debt: float
+    all_paid: bool
+    utilization_history: list[float]
+    interest_history: list[float]
 
 
 class BaselinePolicy(ABC):
@@ -44,7 +58,7 @@ class BaselinePolicy(ABC):
         self,
         env: CreditCardDebtEnv,
         seed: int | None = None,
-    ) -> dict:
+    ) -> EpisodeResult:
         """Run a full episode using this policy.
 
         Args:

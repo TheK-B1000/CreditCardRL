@@ -15,18 +15,17 @@ from pathlib import Path
 # Ensure project root is on path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import yaml
 import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecMonitor
 from stable_baselines3.common.callbacks import EvalCallback, CallbackList
 
 from src.envs.credit_env import CreditCardDebtEnv
-from src.utils.config import load_env_config
+from src.utils.config import load_env_config, load_train_config
 from src.agents.callbacks import CreditMetricsCallback, EpisodeLoggerCallback
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def make_env(env_config_path: str, seed: int = 0):
@@ -37,24 +36,6 @@ def make_env(env_config_path: str, seed: int = 0):
         env.reset(seed=seed)
         return env
     return _init
-
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-
-
-def resolve_project_path(path: str) -> Path:
-    """Resolve a path relative to the project root if not absolute."""
-    p = Path(path)
-    if p.is_absolute():
-        return p
-    return PROJECT_ROOT / p
-
-
-def load_train_config(path: str) -> dict:
-    """Load training hyperparameters from YAML."""
-    resolved = resolve_project_path(path)
-    with open(resolved, "r") as f:
-        return yaml.safe_load(f)
 
 
 # ── Main ─────────────────────────────────────────────────────────────────
@@ -80,10 +61,19 @@ def main():
         default=None,
         help="Override seed from config",
     )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="auto",
+        help="Device for training: 'auto' (use CUDA if available), 'cuda', 'cpu', or 'cuda:0' etc.",
+    )
     args = parser.parse_args()
 
     # ── Load config ──────────────────────────────────────────────────
-    cfg = load_train_config(args.config)
+    config_path = Path(args.config)
+    if not config_path.is_absolute():
+        config_path = PROJECT_ROOT / config_path
+    cfg = load_train_config(config_path)
 
     total_timesteps = args.timesteps or cfg.get("total_timesteps", 500_000)
     seed = args.seed if args.seed is not None else cfg.get("seed", 42)
@@ -94,8 +84,9 @@ def main():
     eval_episodes = cfg.get("eval_episodes", 50)
     checkpoint_freq = cfg.get("checkpoint_freq", 50_000)
 
+    device = args.device
     print(f"Training PPO for {total_timesteps:,} timesteps")
-    print(f"  envs: {n_envs}  |  seed: {seed}  |  log_dir: {log_dir}")
+    print(f"  device: {device}  |  envs: {n_envs}  |  seed: {seed}  |  log_dir: {log_dir}")
     print(f"  env_config: {env_config_path}")
     print()
 
@@ -120,6 +111,7 @@ def main():
     model = PPO(
         policy=cfg.get("policy", "MlpPolicy"),
         env=vec_env,
+        device=device,
         learning_rate=float(cfg.get("learning_rate", 3e-4)),
         n_steps=cfg.get("n_steps", 2048),
         batch_size=cfg.get("batch_size", 64),

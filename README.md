@@ -55,7 +55,6 @@ credit-rl/
 | Snowball | All surplus → smallest balance |
 | Avalanche | All surplus → highest APR |
 | NormalizedAvalanche | Weighted by APR×balance with utilization ceiling |
-| Random | Uniform random allocation |
 
 ## Algorithms (Phase 1)
 

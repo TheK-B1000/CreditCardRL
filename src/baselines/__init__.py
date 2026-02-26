@@ -9,6 +9,7 @@ from src.baselines.normalized_avalanche import NormalizedAvalanchePolicy
 ALL_BASELINES = [
     MinimumOnlyPolicy,
     SnowballPolicy,
+    AvalanchePolicy,
     NormalizedAvalanchePolicy,
 ]
 

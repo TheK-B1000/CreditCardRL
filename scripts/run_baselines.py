@@ -84,7 +84,7 @@ def run_benchmark(
                 )
 
                 rows.append({
-                    "strategy": result["strategy"],
+                    "strategy": result["strategy"].strip(),
                     "seed": seed,
                     "episode": ep_idx,
                     "total_interest": round(result["total_interest"], 2),
@@ -119,8 +119,11 @@ def run_benchmark(
 
 def print_summary(df: pd.DataFrame) -> None:
     """Print summary stats table grouped by strategy."""
+    # Normalize strategy names (strip whitespace) so we don't show duplicates
+    df = df.copy()
+    df["strategy"] = df["strategy"].str.strip()
     summary_rows = []
-    for strategy, group in df.groupby("strategy"):
+    for strategy, group in df.groupby("strategy", sort=False):
         summary_rows.append({
             "Strategy": strategy,
             "Interest (mean±std)": f"${group['total_interest'].mean():,.0f} ± ${group['total_interest'].std():,.0f}",
@@ -141,14 +144,17 @@ def sanity_checks(df: pd.DataFrame) -> None:
     """Run sanity checks on baseline results."""
     print("Sanity checks:")
 
-    # Check 1: NormalizedAvalanche should accrue less or similar interest vs Snowball (on average)
-    norm_aval = df[df["strategy"] == "NormalizedAvalanche"]["total_interest"].mean()
+    # Check 1: Avalanche should accrue less interest than Snowball (on average)
+    aval = df[df["strategy"] == "Avalanche"]["total_interest"].mean()
     snow = df[df["strategy"] == "Snowball"]["total_interest"].mean()
 
-    if norm_aval <= snow:
-        print(f"  [PASS] NormalizedAvalanche (${norm_aval:,.0f}) <= Snowball (${snow:,.0f}) on interest")
+    if aval < snow:
+        print(f"  [PASS] Avalanche (${aval:,.0f}) < Snowball (${snow:,.0f}) on interest")
     else:
-        print(f"  [NOTE] NormalizedAvalanche (${norm_aval:,.0f}) > Snowball (${snow:,.0f}) on interest")
+        print(
+            f"  [FAIL] Avalanche (${aval:,.0f}) >= Snowball (${snow:,.0f}) on interest!\n"
+            f"    This violates a known financial truth. Possible env bug."
+        )
 
     # Check 2: MinimumOnly should be worst on interest
     min_only = df[df["strategy"] == "MinimumOnly"]["total_interest"].mean()
