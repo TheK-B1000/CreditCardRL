@@ -21,6 +21,7 @@ policy_kwargs:
     - 256
 seed: 42
 env_config: configs/env/default_3card.yaml
+diverse_scenarios: true
 n_envs: 4
 eval_freq: 10000
 eval_episodes: 50

@@ -1,7 +1,7 @@
 """Diagnose PPO vs Avalanche when PPO underperforms (P2.5).
 
 Reads results from evaluate_ppo_vs_baselines.py (ppo_vs_baselines_per_episode.csv)
-and suggests common fixes: reward shaping, discrete action space, observation features.
+and suggests next steps: diverse scenarios, reward/obs tweaks.
 
 Usage:
     python scripts/diagnose_ppo.py
@@ -56,18 +56,12 @@ def main():
         return
 
     print("  PPO underperforms Avalanche. Next steps (already applied: dense")
-    print("  interest penalty eta, utilization bonus beta_below, affordability obs):\n")
-    print("  1. DISCRETE ACTION SPACE")
-    print("     → configs/env/default_3card.yaml set action_mode: discrete")
-    print("     → Re-train PPO; discrete allocations can be easier to learn\n")
-    print("  2. TRAIN LONGER")
-    print("     → python scripts/train_ppo.py --timesteps 1000000\n")
-    print("  3. TRAIN ON DIVERSE SCENARIOS")
-    print("     → PPO is currently trained on a single scenario (default_3card).")
-    print("     → Add curriculum or vectorized envs with random 3-card scenarios")
-    print("     → so the policy generalizes to the 1,000-scenario test set.\n")
-    print("  4. FURTHER REWARD / OBS (if still behind)")
-    print("     → Per-card payoff bonus; interest-to-date or months-to-payoff in obs.\n")
+    print("  interest penalty eta, utilization bonus beta_below, affordability obs,")
+    print("  interest-to-date obs, stronger payoff bonus delta, diverse_scenarios):\n")
+    print("  1. FURTHER REWARD / OBS")
+    print("     → Tune eta, delta, or add months-to-payoff in obs (see src/envs/).\n")
+    print("  2. TRAINING")
+    print("     → Train longer (e.g. 2M steps) or tune lr, n_steps, batch_size.\n")
     print("  After changes: re-train, re-run evaluate_ppo_vs_baselines.py, then this script.")
     print("=" * 60)
 

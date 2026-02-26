@@ -49,7 +49,7 @@ class TestReset:
 
     def test_obs_shape(self, env, default_config):
         obs, info = env.reset(seed=42)
-        expected_dim = 5 * default_config.num_cards + 5
+        expected_dim = 5 * default_config.num_cards + 6
         assert obs.shape == (expected_dim,)
 
     def test_obs_normalized(self, env):
@@ -90,7 +90,7 @@ class TestStep:
     def test_obs_shape_after_step(self, env, default_config):
         env.reset(seed=42)
         obs, *_ = env.step(env.action_space.sample())
-        expected_dim = 5 * default_config.num_cards + 5
+        expected_dim = 5 * default_config.num_cards + 6
         assert obs.shape == (expected_dim,)
 
     def test_obs_normalized_after_step(self, env):

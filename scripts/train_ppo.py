@@ -22,6 +22,8 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecMonitor
 from stable_baselines3.common.callbacks import EvalCallback, CallbackList
 
 from src.envs.credit_env import CreditCardDebtEnv
+from src.envs.scenario_sampler import ScenarioSampler
+from src.envs.wrappers import RandomScenarioWrapper
 from src.utils.config import load_env_config, load_train_config
 from src.agents.callbacks import CreditMetricsCallback, EpisodeLoggerCallback
 
@@ -29,11 +31,21 @@ from src.agents.callbacks import CreditMetricsCallback, EpisodeLoggerCallback
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
-def make_env(env_config_path: str, seed: int = 0):
-    """Return a factory function that creates a CreditCardDebtEnv."""
+def make_env(
+    env_config_path: str,
+    seed: int = 0,
+    diverse_scenarios: bool = False,
+):
+    """Return a factory function that creates a CreditCardDebtEnv (optionally with random scenarios)."""
     def _init():
         config = load_env_config(env_config_path)
         env = CreditCardDebtEnv(config=config)
+        if diverse_scenarios:
+            sampler = ScenarioSampler(
+                num_cards_range=(config.num_cards, config.num_cards),
+                action_mode=config.action_mode,
+            )
+            env = RandomScenarioWrapper(env, sampler, reward_cfg=config.reward)
         env.reset(seed=seed)
         return env
     return _init
@@ -80,6 +92,7 @@ def main():
     seed = args.seed if args.seed is not None else cfg.get("seed", 42)
     n_envs = cfg.get("n_envs", 4)
     env_config_path = cfg.get("env_config", "configs/env/default_3card.yaml")
+    diverse_scenarios = cfg.get("diverse_scenarios", False)
     log_dir = cfg.get("log_dir", "runs/")
     eval_freq = cfg.get("eval_freq", 10_000)
     eval_episodes = cfg.get("eval_episodes", 50)
@@ -89,15 +102,20 @@ def main():
     print(f"Training PPO for {total_timesteps:,} timesteps")
     print(f"  device: {device}  |  envs: {n_envs}  |  seed: {seed}  |  log_dir: {log_dir}")
     print(f"  env_config: {env_config_path}")
+    if diverse_scenarios:
+        print(f"  diverse_scenarios: True (random 3-card scenario each episode)")
     print()
 
     # ── Build vectorized training env ────────────────────────────────
-    env_fns = [make_env(env_config_path, seed=seed + i) for i in range(n_envs)]
+    env_fns = [
+        make_env(env_config_path, seed=seed + i, diverse_scenarios=diverse_scenarios)
+        for i in range(n_envs)
+    ]
     vec_env = DummyVecEnv(env_fns)
     vec_env = VecMonitor(vec_env)  # Track episode returns/lengths
 
-    # ── Build eval env (single, deterministic) ───────────────────────
-    eval_env = DummyVecEnv([make_env(env_config_path, seed=seed + 1000)])
+    # ── Build eval env (single, fixed scenario) ───────────────────────
+    eval_env = DummyVecEnv([make_env(env_config_path, seed=seed + 1000, diverse_scenarios=False)])
     eval_env = VecMonitor(eval_env)
 
     # ── PPO hyperparameters ──────────────────────────────────────────
