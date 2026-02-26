@@ -109,6 +109,7 @@ class CreditCardDebtEnv(gym.Env):
 
     def reset(
         self,
+        *,
         seed: int | None = None,
         options: dict[str, Any] | None = None,
     ) -> tuple[np.ndarray, dict[str, Any]]:

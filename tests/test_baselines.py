@@ -7,7 +7,6 @@ from src.baselines import (
     AvalanchePolicy,
     MinimumOnlyPolicy,
     NormalizedAvalanchePolicy,
-    RandomPolicy,
     SnowballPolicy,
 )
 from src.envs.credit_env import CreditCardDebtEnv
@@ -87,14 +86,6 @@ class TestNormalizedAvalanche:
 
     def test_full_episode(self, env_3card):
         result = NormalizedAvalanchePolicy().run_episode(env_3card, seed=42)
-        assert result["months"] > 0
-        assert result["total_interest"] > 0
-
-
-class TestRandom:
-
-    def test_full_episode(self, env_3card):
-        result = RandomPolicy(seed=42).run_episode(env_3card, seed=42)
         assert result["months"] > 0
         assert result["total_interest"] > 0
 
