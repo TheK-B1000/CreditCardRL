@@ -73,9 +73,10 @@ class CreditCardDebtEnv(gym.Env):
         # ── Observation space ──────────────────────────────────────────────
         # Per card (5 features × num_cards):
         #   balance_norm, credit_limit_norm, apr_norm, min_payment_norm, utilization
-        # Global (4 features):
-        #   surplus_budget_norm, month_norm, total_debt_norm, weighted_avg_apr_norm
-        obs_dim = 5 * self.num_cards + 4
+        # Global (6 features):
+        #   surplus_budget_norm, month_norm, total_debt_norm, weighted_avg_apr_norm,
+        #   surplus_ratio (affordability), interest_to_date_norm
+        obs_dim = 5 * self.num_cards + 6
         self.observation_space = spaces.Box(
             low=0.0, high=1.0, shape=(obs_dim,), dtype=np.float32
         )
@@ -101,6 +102,7 @@ class CreditCardDebtEnv(gym.Env):
         self.cards: list[CardState] = []
         self.month: int = 0
         self.initial_total_debt: float = 0.0
+        self._cumulative_interest: float = 0.0  # interest paid so far this episode
         self._last_step_info: dict[str, Any] = {}
 
     # ──────────────────────────────────────────────────────────────────────
@@ -149,6 +151,7 @@ class CreditCardDebtEnv(gym.Env):
 
         self.month = 0
         self.initial_total_debt = sum(c.balance for c in self.cards)
+        self._cumulative_interest = 0.0
 
         info = self._build_info()
         return self._get_obs(), info
@@ -200,6 +203,7 @@ class CreditCardDebtEnv(gym.Env):
                 missed_count += 1
 
         # ── 4. Update balances ────────────────────────────────────────────
+        self._cumulative_interest += total_interest
         cards_paid_off_before = sum(1 for c in self.cards if c.is_paid_off)
         for i, card in enumerate(self.cards):
             update_balance(card, payments[i], interests[i], fees[i])
@@ -353,11 +357,13 @@ class CreditCardDebtEnv(gym.Env):
             min_payment / budget
             utilization
 
-        Global (4 features):
+        Global (5 features):
             surplus_budget / income
             month / max_months
             total_debt / initial_total_debt
             weighted_avg_APR / 0.30
+            surplus / total_debt (affordability, capped at 1)
+            interest_to_date / initial_total_debt (capped at 1)
         """
         obs = []
         max_limit = max((c.credit_limit for c in self.cards), default=1.0)
@@ -378,11 +384,17 @@ class CreditCardDebtEnv(gym.Env):
             compute_min_payment(c, compute_interest(c)) for c in self.cards
         )
         surplus = max(0.0, budget - total_min)
-        obs.append(surplus / max(self.monthly_income, 1.0))             # surplus norm
-        obs.append(self.month / max(self.max_months, 1))                # time norm
         total_debt = sum(c.balance for c in self.cards)
-        obs.append(total_debt / max(self.initial_total_debt, 1.0))      # debt norm
-        obs.append(compute_weighted_avg_apr(self.cards) / 0.30)         # avg APR norm
+        obs.append(surplus / max(self.monthly_income, 1.0))             # surplus norm
+        obs.append(self.month / max(self.max_months, 1))                 # time norm
+        obs.append(total_debt / max(self.initial_total_debt, 1.0))       # debt norm
+        obs.append(compute_weighted_avg_apr(self.cards) / 0.30)          # avg APR norm
+        # Affordability: surplus as fraction of current total debt (cap at 1)
+        surplus_ratio = surplus / max(total_debt, 1.0)
+        obs.append(min(1.0, surplus_ratio))
+        # Interest paid so far (dense signal to minimize total interest)
+        interest_to_date_norm = min(1.0, self._cumulative_interest / max(self.initial_total_debt, 1.0))
+        obs.append(interest_to_date_norm)
 
         obs_array = np.array(obs, dtype=np.float32)
         # Clip to [0, 1] for safety (some values can slightly exceed 1 due to fees)

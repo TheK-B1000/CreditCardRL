@@ -23,6 +23,7 @@ policy_kwargs:
 # Training settings
 seed: 42
 env_config: "configs/env/default_3card.yaml"
+diverse_scenarios: true    # true = random 3-card scenario each episode (better generalization)
 n_envs: 4                    # Parallel envs for vectorized training
 eval_freq: 10_000            # Eval every N steps
 eval_episodes: 50
