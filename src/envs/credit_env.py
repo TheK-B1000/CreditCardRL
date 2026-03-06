@@ -104,6 +104,7 @@ class CreditCardDebtEnv(gym.Env):
         self.initial_total_debt: float = 0.0
         self._cumulative_interest: float = 0.0  # interest paid so far this episode
         self._last_step_info: dict[str, Any] = {}
+        self._income_schedule: list[float] | None = None  # for income-shock edge case
 
     # ──────────────────────────────────────────────────────────────────────
     # Gymnasium API
@@ -127,8 +128,8 @@ class CreditCardDebtEnv(gym.Env):
         super().reset(seed=seed)
 
         # Allow runtime config override
+        cfg: EnvConfig = (options or {}).get("config") or self.config
         if options and "config" in options:
-            cfg: EnvConfig = options["config"]
             self._card_configs = cfg.cards
             self.num_cards = cfg.num_cards
             self.monthly_income = cfg.monthly_income
@@ -136,6 +137,7 @@ class CreditCardDebtEnv(gym.Env):
             self.max_months = cfg.max_months
             self.reward_cfg = cfg.reward
             self.reward_cfg.utilization_target = cfg.utilization_target
+        self._income_schedule = getattr(cfg, "income_schedule", None)
 
         # Initialize card states from config
         self.cards = [
@@ -176,6 +178,12 @@ class CreditCardDebtEnv(gym.Env):
             (obs, reward, terminated, truncated, info)
         """
         self.month += 1
+
+        # Income shock: override monthly_income from schedule if present
+        if self._income_schedule:
+            idx = min(self.month - 1, len(self._income_schedule) - 1)
+            if idx >= 0:
+                self.monthly_income = self._income_schedule[idx]
 
         # ── 1. Interest & minimums ────────────────────────────────────────
         interests = []
