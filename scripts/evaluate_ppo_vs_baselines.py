@@ -67,12 +67,19 @@ def run_benchmark(
     model_path = Path(model_path)
     if not model_path.exists():
         raise FileNotFoundError(f"Model not found: {model_path}")
-    model = PPO.load(str(model_path))
 
-    # Fixed 3-card scenarios so PPO (trained on 3-card) works
+    # Fixed 3-card scenarios so PPO (trained on 3-card) works; need one env for spaces when loading
     sampler = ScenarioSampler(num_cards_range=(NUM_CARDS_TEST, NUM_CARDS_TEST))
     rng = np.random.default_rng(test_seed)
     scenarios = [sampler.sample(rng) for _ in range(num_episodes)]
+    temp_env = CreditCardDebtEnv(config=scenarios[0])
+    model = PPO.load(
+        str(model_path),
+        custom_objects={
+            "observation_space": temp_env.observation_space,
+            "action_space": temp_env.action_space,
+        },
+    )
 
     rows: list[dict] = []
     strategies = [("PPO", None)] + [(p().name, p()) for p in ALL_BASELINES]
@@ -153,25 +160,47 @@ def run_benchmark(
     return df
 
 
-def print_summary(df: pd.DataFrame) -> None:
-    """Print summary stats by strategy."""
+def build_summary_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Build summary stats by strategy (numeric columns for tables/plots)."""
     df = df.copy()
     df["strategy"] = df["strategy"].str.strip()
     summary_rows = []
     for strategy, group in df.groupby("strategy", sort=False):
         summary_rows.append({
-            "Strategy": strategy,
-            "Interest (mean±std)": f"${group['total_interest'].mean():,.0f} ± ${group['total_interest'].std():,.0f}",
-            "Months (mean±std)": f"{group['months'].mean():.1f} ± {group['months'].std():.1f}",
-            "Util (mean)": f"{group['avg_utilization'].mean():.3f}",
-            "Paid Off %": f"{group['all_paid'].mean() * 100:.1f}%",
-            "Credit Score (mean)": f"{group['credit_proxy_score'].mean():.0f}",
+            "strategy": strategy,
+            "interest_mean": round(group["total_interest"].mean(), 2),
+            "interest_std": round(group["total_interest"].std(), 2),
+            "months_mean": round(group["months"].mean(), 2),
+            "months_std": round(group["months"].std(), 2),
+            "util_mean": round(group["avg_utilization"].mean(), 4),
+            "paid_off_pct": round(group["all_paid"].mean() * 100, 2),
+            "credit_score_mean": round(group["credit_proxy_score"].mean(), 2),
+            "n_episodes": len(group),
         })
-    summary = pd.DataFrame(summary_rows)
+    return pd.DataFrame(summary_rows)
+
+
+def print_summary(df: pd.DataFrame, summary_df: pd.DataFrame | None = None) -> None:
+    """Print summary stats by strategy."""
+    if summary_df is None:
+        summary_df = build_summary_df(df)
+    display = pd.DataFrame({
+        "Strategy": summary_df["strategy"],
+        "Interest (mean±std)": (
+            "$" + summary_df["interest_mean"].astype(int).astype(str)
+            + " ± $" + summary_df["interest_std"].astype(int).astype(str)
+        ),
+        "Months (mean±std)": (
+            summary_df["months_mean"].astype(str) + " ± " + summary_df["months_std"].astype(str)
+        ),
+        "Util (mean)": summary_df["util_mean"].astype(str),
+        "Paid Off %": summary_df["paid_off_pct"].astype(str) + "%",
+        "Credit Score (mean)": summary_df["credit_score_mean"].astype(int).astype(str),
+    })
     print("\n" + "=" * 90)
     print("  PPO vs BASELINES — Fixed 1,000-scenario test set")
     print("=" * 90)
-    print(summary.to_string(index=False))
+    print(display.to_string(index=False))
     print()
 
 
@@ -208,7 +237,13 @@ def main():
         test_seed=args.seed,
         output_dir=args.output,
     )
-    print_summary(df)
+    summary_df = build_summary_df(df)
+    out_path = Path(args.output)
+    out_path.mkdir(parents=True, exist_ok=True)
+    summary_path = out_path / "ppo_vs_baselines_summary.csv"
+    summary_df.to_csv(summary_path, index=False)
+    print(f"Summary saved to {summary_path}")
+    print_summary(df, summary_df)
 
 
 if __name__ == "__main__":
