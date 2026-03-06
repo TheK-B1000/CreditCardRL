@@ -32,6 +32,8 @@ class EnvConfig:
     max_months: int = 60
     utilization_target: float = 0.30
     reward: RewardConfig = field(default_factory=RewardConfig)
+    # Optional: income per month (1-indexed); if set, overrides monthly_income for that month (for income-shock tests)
+    income_schedule: list[float] | None = None
 
     @property
     def num_cards(self) -> int:

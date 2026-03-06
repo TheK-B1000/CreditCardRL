@@ -62,27 +62,30 @@ def run_benchmark(
     num_episodes: int = NUM_TEST_EPISODES,
     test_seed: int = DEFAULT_TEST_SEED,
     output_dir: str = "results",
+    run_ppo: bool = True,
 ) -> pd.DataFrame:
-    """Run PPO + all baselines on the same fixed set of scenarios."""
+    """Run PPO (if run_ppo and model exists) + all baselines on the same fixed set of scenarios."""
     model_path = Path(model_path)
-    if not model_path.exists():
-        raise FileNotFoundError(f"Model not found: {model_path}")
+    run_ppo = run_ppo and model_path.exists()
+    if run_ppo is False and not model_path.exists():
+        print(f"Model not found: {model_path}; running baselines only.")
 
-    # Fixed 3-card scenarios so PPO (trained on 3-card) works; need one env for spaces when loading
     sampler = ScenarioSampler(num_cards_range=(NUM_CARDS_TEST, NUM_CARDS_TEST))
     rng = np.random.default_rng(test_seed)
     scenarios = [sampler.sample(rng) for _ in range(num_episodes)]
     temp_env = CreditCardDebtEnv(config=scenarios[0])
-    model = PPO.load(
-        str(model_path),
-        custom_objects={
-            "observation_space": temp_env.observation_space,
-            "action_space": temp_env.action_space,
-        },
-    )
+    model = None
+    if run_ppo:
+        model = PPO.load(
+            str(model_path),
+            custom_objects={
+                "observation_space": temp_env.observation_space,
+                "action_space": temp_env.action_space,
+            },
+        )
 
     rows: list[dict] = []
-    strategies = [("PPO", None)] + [(p().name, p()) for p in ALL_BASELINES]
+    strategies = ([("PPO", None)] if run_ppo else []) + [(p().name, p()) for p in ALL_BASELINES]
     total_runs = len(strategies) * num_episodes
     completed = 0
     t0 = time.time()
@@ -91,35 +94,34 @@ def run_benchmark(
         env = CreditCardDebtEnv(config=scenario)
         seed_ep = test_seed + ep_idx
 
-        # PPO
-        result = run_ppo_episode(env, model, seed_ep)
-        initial_debt = scenario.total_initial_debt
-        debt_reduction = (
-            (initial_debt - result["final_debt"]) / initial_debt if initial_debt > 0 else 1.0
-        )
-        result["credit_proxy_score"] = round(
-            compute_credit_proxy_score(
-                avg_utilization=result["avg_utilization"],
-                missed_min_ratio=0.0,
-                debt_reduction_ratio=debt_reduction,
-            ),
-            1,
-        )
-        rows.append({
-            "strategy": result["strategy"],
-            "seed": test_seed,
-            "episode": ep_idx,
-            "total_interest": round(result["total_interest"], 2),
-            "months": result["months"],
-            "avg_utilization": round(result["avg_utilization"], 4),
-            "final_debt": round(result["final_debt"], 2),
-            "all_paid": result["all_paid"],
-            "credit_proxy_score": result["credit_proxy_score"],
-        })
-        completed += 1
+        if run_ppo:
+            result = run_ppo_episode(env, model, seed_ep)
+            initial_debt = scenario.total_initial_debt
+            debt_reduction = (
+                (initial_debt - result["final_debt"]) / initial_debt if initial_debt > 0 else 1.0
+            )
+            result["credit_proxy_score"] = round(
+                compute_credit_proxy_score(
+                    avg_utilization=result["avg_utilization"],
+                    missed_min_ratio=0.0,
+                    debt_reduction_ratio=debt_reduction,
+                ),
+                1,
+            )
+            rows.append({
+                "strategy": result["strategy"],
+                "seed": test_seed,
+                "episode": ep_idx,
+                "total_interest": round(result["total_interest"], 2),
+                "months": result["months"],
+                "avg_utilization": round(result["avg_utilization"], 4),
+                "final_debt": round(result["final_debt"], 2),
+                "all_paid": result["all_paid"],
+                "credit_proxy_score": result["credit_proxy_score"],
+            })
+            completed += 1
 
-        # Baselines
-        for name, policy in strategies[1:]:
+        for name, policy in strategies[1:] if run_ppo else strategies:
             if policy is None:
                 continue
             env_b = CreditCardDebtEnv(config=scenario)
@@ -225,17 +227,27 @@ def main():
         help=f"RNG seed for fixed test set (default {DEFAULT_TEST_SEED})",
     )
     parser.add_argument("--output", type=str, default="results", help="Output directory")
+    parser.add_argument(
+        "--no-ppo",
+        action="store_true",
+        help="Run baselines only (no PPO model loaded)",
+    )
     args = parser.parse_args()
 
-    print(f"Loading PPO from {args.model}")
+    run_ppo = not args.no_ppo
+    if run_ppo:
+        print(f"Loading PPO from {args.model}")
+    else:
+        print("Running baselines only (--no-ppo).")
     print(f"Fixed test set: {args.episodes} scenarios (3-card), seed={args.seed}")
-    print(f"Strategies: PPO + {len(ALL_BASELINES)} baselines\n")
+    print(f"Strategies: {'PPO + ' if run_ppo else ''}{len(ALL_BASELINES)} baselines\n")
 
     df = run_benchmark(
         model_path=args.model,
         num_episodes=args.episodes,
         test_seed=args.seed,
         output_dir=args.output,
+        run_ppo=run_ppo,
     )
     summary_df = build_summary_df(df)
     out_path = Path(args.output)
