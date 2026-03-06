@@ -1,0 +1,6 @@
+strategy,interest_mean,interest_std,months_mean,months_std,util_mean,paid_off_pct,credit_score_mean,n_episodes
+PPO,4462.03,3774.21,31.17,15.84,0.247,88.6,803.01,1000
+MinimumOnly,4578.21,3817.8,31.1,15.94,0.2487,88.5,802.66,1000
+Snowball,4658.4,3822.14,31.49,15.83,0.253,88.0,801.83,1000
+Avalanche,4381.63,3725.08,31.3,15.72,0.2495,88.7,802.61,1000
+NormalizedAvalanche,4534.53,3807.35,30.83,15.98,0.2488,88.7,802.71,1000
