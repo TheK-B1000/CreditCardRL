@@ -1,1 +1,1 @@
-# Utility modules
+"""Configuration and config loading utilities."""
