@@ -1,0 +1,74 @@
+# P4.1 — Held-out test set for generalization & robustness
+#
+# Purpose: Test the agent on scenario distributions that differ from training.
+# Training distribution (in-distribution): 3 cards, APR 12–29%, income $3k–$8k.
+#
+# This config defines held-out distributions:
+#   - Different APR ranges (low / high / extended)
+#   - Different income levels (low / high)
+#   - Optionally different number of cards (2 or 4; PPO trained on 3-card only)
+#
+# Use with: python scripts/evaluate_held_out.py --config configs/eval/held_out_test.yaml
+
+# Fixed seed for reproducible held-out test set
+seed: 4242
+num_episodes: 1000
+
+# ---------------------------------------------------------------------------
+# Primary held-out: 3-card (same obs/action dims as training), shifted params
+# ---------------------------------------------------------------------------
+# "low_apr_low_income": Stricter budget, lower APRs than training
+low_apr_low_income:
+  num_cards_range: [3, 3]
+  apr_range: [0.07, 0.17]          # Training: [0.12, 0.29]
+  balance_range: [500, 15000]
+  income_range: [2000, 5000]        # Training: [3000, 8000]
+  expense_ratio_range: [0.55, 0.85]
+
+# "high_apr_high_income": Higher APRs and higher income than training
+high_apr_high_income:
+  num_cards_range: [3, 3]
+  apr_range: [0.26, 0.36]          # Training: [0.12, 0.29]
+  balance_range: [500, 15000]
+  income_range: [9000, 15000]      # Training: [3000, 8000]
+  expense_ratio_range: [0.50, 0.75]
+
+# "extended_ranges": Wider than training (more extreme cases)
+extended_ranges:
+  num_cards_range: [3, 3]
+  apr_range: [0.06, 0.35]          # Wider than training 0.12–0.29
+  balance_range: [300, 20000]
+  income_range: [1800, 12000]      # Wider than training 3k–8k
+  expense_ratio_range: [0.45, 0.85]
+
+# ---------------------------------------------------------------------------
+# Fewer / more cards (distribution shift in structure)
+# PPO was trained with 3-card obs/action; 2-card and 4-card require
+# separate handling (e.g. baseline-only or a variable-card model).
+# ---------------------------------------------------------------------------
+fewer_cards:
+  num_cards_range: [2, 2]
+  apr_range: [0.12, 0.29]
+  balance_range: [500, 15000]
+  income_range: [3000, 8000]
+  expense_ratio_range: [0.50, 0.80]
+
+more_cards:
+  num_cards_range: [4, 4]
+  apr_range: [0.12, 0.29]
+  balance_range: [500, 15000]
+  income_range: [3000, 8000]
+  expense_ratio_range: [0.50, 0.80]
+
+# Default: which held-out preset to use if not specified on CLI
+default_preset: "low_apr_low_income"
+
+# ---------------------------------------------------------------------------
+# Generalization gap (P4): Compare in-distribution vs held-out
+# ---------------------------------------------------------------------------
+# In-distribution: python scripts/evaluate_ppo_vs_baselines.py
+#   -> results/ppo_vs_baselines_summary.csv
+# Held-out:       python scripts/evaluate_held_out.py [--preset ...]
+#   -> results/held_out_summary_<preset>.csv
+# Gap = (metric on held-out) - (metric on in-distribution) for PPO;
+# report mean interest, months to payoff, paid-off % by test set.

@@ -1,0 +1,5 @@
+strategy,interest_mean,interest_std,months_mean,months_std,util_mean,paid_off_pct,credit_score_mean,n_episodes
+MinimumOnly,1227.62,1438.67,8.9,5.26,0.179,100.0,820.49,10
+Snowball,1312.9,1574.12,8.9,5.43,0.1918,100.0,818.37,10
+Avalanche,1147.2,1260.41,8.7,5.06,0.1875,100.0,819.08,10
+NormalizedAvalanche,1188.68,1360.34,8.8,5.29,0.1771,100.0,820.77,10
