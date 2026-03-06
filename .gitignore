@@ -20,7 +20,6 @@ env/
 
 # Runtime artifacts (generated at training time)
 runs/
-results/
 
 # OS
 .DS_Store

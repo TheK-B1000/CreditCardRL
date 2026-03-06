@@ -1,0 +1,9 @@
+# PPO vs Baselines — Fixed test set
+
+| Strategy | Interest ($) | Months | Utilization | Paid off (%) | Credit score | N episodes |
+| --- | --- | --- | --- | --- | --- | --- |
+| PPO | 4,061 ± 3,994 | 17.75 ± 10.84 | 0.2213 | 98.7 | 812.8 | 1000 |
+| MinimumOnly | 4,238 ± 4,115 | 17.67 ± 10.98 | 0.2220 | 98.5 | 812.6 | 1000 |
+| Snowball | 4,418 ± 4,174 | 18.16 ± 10.93 | 0.2311 | 98.6 | 811.1 | 1000 |
+| Avalanche | 4,066 ± 3,945 | 18.00 ± 10.75 | 0.2261 | 98.8 | 812.0 | 1000 |
+| NormalizedAvalanche | 4,176 ± 4,091 | 17.39 ± 10.97 | 0.2221 | 98.6 | 812.6 | 1000 |
