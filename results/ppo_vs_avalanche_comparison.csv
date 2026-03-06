@@ -1,0 +1,21 @@
+test_set,metric,PPO,Avalanche,PPO_minus_Avalanche,better
+In-distribution,Total interest ($),4061.44,4066.33,-4.89,PPO
+In-distribution,Months to payoff,17.75,18.0,-0.25,PPO
+In-distribution,Avg utilization,0.2213,0.2261,-0.0048,PPO
+In-distribution,Paid off (%),98.7,98.8,-0.1,Avalanche
+In-distribution,Credit score,812.78,811.99,0.79,PPO
+extended_ranges,Total interest ($),7778.32,7734.51,43.81,Avalanche
+extended_ranges,Months to payoff,23.34,23.52,-0.18,PPO
+extended_ranges,Avg utilization,0.2408,0.2437,-0.0029,PPO
+extended_ranges,Paid off (%),89.6,89.6,0.0,Avalanche
+extended_ranges,Credit score,802.3,801.88,0.42,PPO
+high_apr_high_income,Total interest ($),2550.35,2656.82,-106.47,PPO
+high_apr_high_income,Months to payoff,7.42,7.66,-0.24,PPO
+high_apr_high_income,Avg utilization,0.1869,0.2003,-0.0134,PPO
+high_apr_high_income,Paid off (%),100.0,100.0,0.0,Avalanche
+high_apr_high_income,Credit score,819.15,816.95,2.2,PPO
+low_apr_low_income,Total interest ($),4462.03,4381.63,80.4,Avalanche
+low_apr_low_income,Months to payoff,31.17,31.3,-0.13,PPO
+low_apr_low_income,Avg utilization,0.247,0.2495,-0.0025,PPO
+low_apr_low_income,Paid off (%),88.6,88.7,-0.1,Avalanche
+low_apr_low_income,Credit score,803.01,802.61,0.4,PPO
