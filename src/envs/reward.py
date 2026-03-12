@@ -6,6 +6,7 @@ Configurable via RewardConfig dataclass. Computes per-step and terminal rewards.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from statistics import pstdev
 
 from src.envs.financial_model import CardState, compute_overall_utilization
 
@@ -24,6 +25,11 @@ class RewardConfig:
     zeta: float = 1.0       # Time pressure terminal penalty
 
     utilization_target: float = 0.30  # Target utilization threshold
+
+    # Per-card and concentration shaping to mitigate greedy avalanche behavior
+    # and reward hacking around utilization.
+    max_util_weight: float = 0.5      # Penalty on highest-card utilization above target
+    concentration_weight: float = 0.3  # Penalty on dispersion of utilizations
 
 
 def compute_step_reward(
@@ -68,13 +74,41 @@ def compute_step_reward(
     else:
         util_term = cfg.beta_below * (cfg.utilization_target - avg_util)
 
+    # Per-card utilization statistics (exclude paid-off cards)
+    active_utils = [c.utilization for c in cards if not c.is_paid_off]
+
+    # Penalty on the single highest-card utilization above target
+    if active_utils:
+        max_util = max(active_utils)
+        max_util_penalty = -cfg.max_util_weight * max(
+            0.0, max_util - cfg.utilization_target
+        )
+    else:
+        max_util_penalty = 0.0
+
+    # Concentration penalty: higher when utilizations are very uneven.
+    # This discourages dumping all extra payment into a single card in a way
+    # that spikes its utilization, even if interest is reduced.
+    if len(active_utils) > 1:
+        util_std = pstdev(active_utils)
+        concentration_penalty = -cfg.concentration_weight * util_std
+    else:
+        concentration_penalty = 0.0
+
     # Missed minimum hard penalty
     missed_penalty = cfg.gamma_ * missed_minimum_count
 
     # Payoff bonus
     payoff_bonus = cfg.delta * cards_paid_off_this_step
 
-    return -interest_penalty + util_term - missed_penalty + payoff_bonus
+    return (
+        -interest_penalty
+        + util_term
+        + max_util_penalty
+        + concentration_penalty
+        - missed_penalty
+        + payoff_bonus
+    )
 
 
 def compute_terminal_reward(
